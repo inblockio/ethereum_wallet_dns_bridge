@@ -167,12 +167,17 @@ program
   .command('verify')
   .description('Verify a wallet-to-domain association')
   .argument('<domain>', 'Domain name (e.g., example.com)')
-  .action(async (domain) => {
+  .argument('[expectedWallet]', 'Expected wallet address (optional)')
+  .action(async (domain, expectedWallet?) => {
     try {
       console.log(`🔍 Verifying wallet association for: ${domain}`);
       console.log(`ℹ️  DNS record location: aqua._wallet.${domain}`);
+      if(expectedWallet){
+        console.log(`🟰  Wallet address expected: aqua._wallet.${expectedWallet}`);
+
+      }
       
-      const isValid = await verifyProof(domain, 'wallet');
+      const isValid = await verifyProof(domain, 'wallet', expectedWallet);
       
       if (!isValid) {
         console.log('\n📋 Troubleshooting checklist:');

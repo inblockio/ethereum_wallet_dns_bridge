@@ -1,176 +1,249 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-<title>MetaMask Wallet Signer</title>
-<style>
-body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;background:#f5f5f5}
-.container{background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
-.form-group{margin-bottom:20px}
-label{display:block;margin-bottom:8px;font-weight:bold}
-input{width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
-.btn{background:#0066cc;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;margin-right:10px}
-.btn:disabled{background:#ccc}
-.status{padding:15px;border-radius:4px;margin:20px 0}
-.status.success{background:#d4edda;color:#155724}
-.status.error{background:#f8d7da;color:#721c24}
-.output{background:#f8f9fa;border:1px solid #ddd;padding:15px;font-family:monospace;font-size:14px;margin-top:20px;word-break:break-all}
-</style>
+    <title>MetaMask Wallet Signer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1)
+        }
+
+        .form-group {
+            margin-bottom: 20px
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box
+        }
+
+        .btn {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px
+        }
+
+        .btn:disabled {
+            background: #ccc
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24
+        }
+
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 14px;
+            margin-top: 20px;
+            word-break: break-all
+        }
+    </style>
 </head>
+
 <body>
-<div class="container">
-<h1>🔐 Wallet-to-Domain Signature Tool</h1>
-<p>Generate cryptographic proofs for DNS TXT records using MetaMask</p>
-<div id="status" class="status">📦 Checking MetaMask...</div>
-<div class="form-group">
-<label for="domain">Domain Name:</label>
-<input type="text" id="domain" placeholder="example.com">
-</div>
-<div style="padding:15px;background:#e8f4fd;border:1px solid #bee5eb;border-radius:4px;margin:15px 0;">
-<strong>🏷️ DNS Record Location:</strong> <code>aqua._wallet.&lt;your-domain&gt;</code><br>
-<small style="color:#6c757d;">The lookup key is fixed to "wallet" for simplicity</small>
-</div>
-<div id="wallet-info" style="display:none;padding:15px;background:#e3f2fd;border-radius:4px;margin:15px 0">
-<strong>🦊 Connected Wallet:</strong>
-<div id="wallet-address"></div>
-</div>
-<div class="form-group">
-<button id="connect-btn" class="btn" disabled>Connect MetaMask</button>
-<button id="sign-btn" class="btn" disabled>Generate Signature</button>
-</div>
-<div id="output-section" style="display:none">
-<h3>🎉 Signature Generated!</h3>
-<div class="output">
-<strong>CLI Command:</strong><br>
-<div id="cli-command" style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;"></div>
-<button onclick="copyText('cli-command')" class="btn" style="margin-top:10px;font-size:14px;background:#28a745">📋 Copy CLI Command</button>
-</div>
-<div class="output">
-<strong>DNS TXT Record:</strong><br>
-<div id="txt-record" style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;"></div>
-<button onclick="copyText('txt-record')" class="btn" style="margin-top:10px;font-size:14px;background:#007bff">📋 Copy TXT Record</button>
-</div>
-<div style="margin-top:20px;padding:15px;background:#d1ecf1;border:1px solid #bee5eb;border-radius:4px;">
-<strong>📝 Next Steps:</strong>
-<ol style="margin:10px 0;">
-<li>Copy and run the CLI command above</li>
-<li>Copy the TXT record content</li>
-<li>Add TXT record to your DNS: <code>aqua._wallet.&lt;domain&gt;</code></li>
-<li>Wait for DNS propagation (up to 24 hours)</li>
-<li>Use verify command: <code>wallet-tool verify &lt;domain&gt;</code></li>
-</ol>
-</div>
-</div>
-</div>
-<script>
-let account,timestamp,nonce;
-async function checkMetaMask(){
-const statusDiv=document.getElementById('status');
-if(typeof window.ethereum!=='undefined'){
-statusDiv.innerHTML='🦊 MetaMask detected! Ready to connect.';
-statusDiv.className='status success';
-document.getElementById('connect-btn').disabled=false;
-}else{
-statusDiv.innerHTML='❌ MetaMask not found. Please install MetaMask.';
-statusDiv.className='status error';
-}}
-async function connectWallet(){
-try{
-const accounts=await ethereum.request({method:'eth_requestAccounts'});
-account=accounts[0];
-document.getElementById('wallet-info').style.display='block';
-document.getElementById('wallet-address').textContent=account;
-document.getElementById('connect-btn').textContent='✅ Connected';
-document.getElementById('connect-btn').disabled=true;
-document.getElementById('sign-btn').disabled=false;
-}catch(error){
-alert('Failed to connect: '+error.message);
-}}
+    <div class="container">
+        <h1>🔐 Wallet-to-Domain Signature Tool</h1>
+        <p>Generate cryptographic proofs for DNS TXT records using MetaMask</p>
+        <div id="status" class="status">📦 Checking MetaMask...</div>
+        <div class="form-group">
+            <label for="domain">Domain Name:</label>
+            <input type="text" id="domain" placeholder="example.com">
+        </div>
+        <div style="padding:15px;background:#e8f4fd;border:1px solid #bee5eb;border-radius:4px;margin:15px 0;">
+            <strong>🏷️ DNS Record Location:</strong> <code>aqua._wallet.&lt;your-domain&gt;</code><br>
+            <small style="color:#6c757d;">The lookup key is fixed to "wallet" for simplicity</small>
+        </div>
+        <div id="wallet-info" style="display:none;padding:15px;background:#e3f2fd;border-radius:4px;margin:15px 0">
+            <strong>🦊 Connected Wallet:</strong>
+            <div id="wallet-address"></div>
+        </div>
+        <div class="form-group">
+            <button id="connect-btn" class="btn" disabled>Connect MetaMask</button>
+            <button id="sign-btn" class="btn" disabled>Generate Signature</button>
+        </div>
+        <div id="output-section" style="display:none">
+            <h3>🎉 Signature Generated!</h3>
+            <div class="output">
+                <strong>CLI Command:</strong><br>
+                <div id="cli-command"
+                    style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;">
+                </div>
+                <button onclick="copyText('cli-command')" class="btn"
+                    style="margin-top:10px;font-size:14px;background:#28a745">📋 Copy CLI Command</button>
+            </div>
+            <div class="output">
+                <strong>DNS TXT Record:</strong><br>
+                <div id="txt-record"
+                    style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;">
+                </div>
+                <button onclick="copyText('txt-record')" class="btn"
+                    style="margin-top:10px;font-size:14px;background:#007bff">📋 Copy TXT Record</button>
+            </div>
+            <div style="margin-top:20px;padding:15px;background:#d1ecf1;border:1px solid #bee5eb;border-radius:4px;">
+                <strong>📝 Next Steps:</strong>
+                <ol style="margin:10px 0;">
+                    <li>Copy and run the CLI command above</li>
+                    <li>Copy the TXT record content</li>
+                    <li>Add TXT record to your DNS: <code>aqua._wallet.&lt;domain&gt;</code></li>
+                    <li>Wait for DNS propagation (up to 24 hours)</li>
+                    <li>Use verify command: <code>wallet-tool verify &lt;domain&gt;</code></li>
+                </ol>
+            </div>
+        </div>
+    </div>
+    <script>
+        let account, timestamp, nonce;
+        async function checkMetaMask() {
+            const statusDiv = document.getElementById('status');
+            if (typeof window.ethereum !== 'undefined') {
+                statusDiv.innerHTML = '🦊 MetaMask detected! Ready to connect.';
+                statusDiv.className = 'status success';
+                document.getElementById('connect-btn').disabled = false;
+            } else {
+                statusDiv.innerHTML = '❌ MetaMask not found. Please install MetaMask.';
+                statusDiv.className = 'status error';
+            }
+        }
+        async function connectWallet() {
+            try { 
+                const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+                account = accounts[0];
+                document.getElementById('wallet-info').style.display = 'block';
+                document.getElementById('wallet-address').textContent = account;
+                document.getElementById('connect-btn').textContent = '✅ Connected';
+                document.getElementById('connect-btn').disabled = true;
+                document.getElementById('sign-btn').disabled = false;
+            } catch (error) {
+                alert('Failed to connect: ' + error.message);
+            }
+        }
 
-async function signMessage(){
-const domain=document.getElementById('domain').value.trim();
-if(!domain){alert('Please enter a domain name');return;}
-try{
-timestamp=Math.floor(Date.now()/1000).toString();
-const expiration=Math.floor(Date.now()/1000+(90*24*60*60)).toString(); // 90 days default
-// Message format: unix_timestamp|domain_name|expiration_timestamp
-const message=`${timestamp}|${domain}|${expiration}`;
-console.log('Signing message (before EIP-191 formatting):', message);
-console.log('MetaMask will apply EIP-191 formatting automatically');
-document.getElementById('sign-btn').textContent='Signing...';
-document.getElementById('sign-btn').disabled=true;
-const signature=await ethereum.request({method:'personal_sign',params:[message,account]});
-generateOutputs(domain,signature,expiration);
-}catch(error){
-alert('Failed to sign: '+error.message);
-document.getElementById('sign-btn').textContent='Generate Signature';
-document.getElementById('sign-btn').disabled=false;
-}}
-function generateOutputs(domain,signature,expiration){
-const cliCommand=`node dist/wallet-tool.js generate-from-browser "${domain}" "${account}" "${signature}"`;
-const txtRecord=`wallet=${account}&timestamp=${timestamp}&expiration=${expiration}&sig=${signature}`;
+        async function signMessage() {
+            const domain = document.getElementById('domain').value.trim();
+            if (!domain) { alert('Please enter a domain name'); return; }
+            try {
+                timestamp = Math.floor(Date.now() / 1000).toString();
+                const expiration = Math.floor(Date.now() / 1000 + (90 * 24 * 60 * 60)).toString(); // 90 days default
+                // Message format: unix_timestamp|domain_name|expiration_timestamp
+                const message = `${timestamp}|${domain}|${expiration}`;
+                console.log('Signing message (before EIP-191 formatting):', message);
+                console.log('MetaMask will apply EIP-191 formatting automatically');
+                document.getElementById('sign-btn').textContent = 'Signing...';
+                document.getElementById('sign-btn').disabled = true;
+                const signature = await ethereum.request({ method: 'personal_sign', params: [message, account] });
+                generateOutputs(domain, signature, expiration);
+            } catch (error) {
+                alert('Failed to sign: ' + error.message);
+                document.getElementById('sign-btn').textContent = 'Generate Signature';
+                document.getElementById('sign-btn').disabled = false;
+            }
+        }
+        function generateOutputs(domain, signature, expiration) {
+            const cliCommand = `node dist/wallet-tool.js generate-from-browser "${domain}" "${account}" "${signature}"`;
+            const txtRecord = `wallet=${account}&timestamp=${timestamp}&expiration=${expiration}&sig=${signature}`;
 
-console.log('Generated CLI command:', cliCommand);
-console.log('Generated TXT record:', txtRecord);
-console.log('Expires:', new Date(parseInt(expiration)*1000).toISOString());
+            console.log('Generated CLI command:', cliCommand);
+            console.log('Generated TXT record:', txtRecord);
+            console.log('Expires:', new Date(parseInt(expiration) * 1000).toISOString());
 
-document.getElementById('cli-command').textContent=cliCommand;
-document.getElementById('txt-record').textContent=txtRecord;
-document.getElementById('output-section').style.display='block';
-document.getElementById('sign-btn').textContent='Generate New Signature';
-document.getElementById('sign-btn').disabled=false;
+            document.getElementById('cli-command').textContent = cliCommand;
+            document.getElementById('txt-record').textContent = txtRecord;
+            document.getElementById('output-section').style.display = 'block';
+            document.getElementById('sign-btn').textContent = 'Generate New Signature';
+            document.getElementById('sign-btn').disabled = false;
 
-// Log for debugging
-console.log('Output section displayed, content set');
-}
-function copyText(elementId){
-const element=document.getElementById(elementId);
-const originalText=element.textContent;
+            // Log for debugging
+            console.log('Output section displayed, content set');
+        }
+        function copyText(elementId) {
+            const element = document.getElementById(elementId);
+            const originalText = element.textContent;
 
-// Try modern clipboard API first
-if(navigator.clipboard && window.isSecureContext){
-navigator.clipboard.writeText(originalText).then(()=>{
-showCopySuccess(element,originalText);
-}).catch(()=>{
-fallbackCopy(originalText,element);
-});
-}else{
-fallbackCopy(originalText,element);
-}
-}
+            // Try modern clipboard API first
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(originalText).then(() => {
+                    showCopySuccess(element, originalText);
+                }).catch(() => {
+                    fallbackCopy(originalText, element);
+                });
+            } else {
+                fallbackCopy(originalText, element);
+            }
+        }
 
-function showCopySuccess(element,originalText){
-const button=element.nextElementSibling;
-const originalButtonText=button.textContent;
-button.textContent='✅ Copied!';
-button.style.background='#28a745';
-setTimeout(()=>{
-button.textContent=originalButtonText;
-button.style.background='#0066cc';
-},2000);
-}
+        function showCopySuccess(element, originalText) {
+            const button = element.nextElementSibling;
+            const originalButtonText = button.textContent;
+            button.textContent = '✅ Copied!';
+            button.style.background = '#28a745';
+            setTimeout(() => {
+                button.textContent = originalButtonText;
+                button.style.background = '#0066cc';
+            }, 2000);
+        }
 
-function fallbackCopy(text,element){
-// Fallback for older browsers or insecure contexts
-const textArea=document.createElement('textarea');
-textArea.value=text;
-textArea.style.position='fixed';
-textArea.style.left='-999999px';
-textArea.style.top='-999999px';
-document.body.appendChild(textArea);
-textArea.focus();
-textArea.select();
-try{
-document.execCommand('copy');
-showCopySuccess(element,text);
-}catch(err){
-console.error('Copy failed:',err);
-alert('Copy failed. Please copy manually:\n\n'+text);
-}
-document.body.removeChild(textArea);
-}
-document.getElementById('connect-btn').addEventListener('click',connectWallet);
-document.getElementById('sign-btn').addEventListener('click',signMessage);
-checkMetaMask();
-</script>
+        function fallbackCopy(text, element) {
+            // Fallback for older browsers or insecure contexts
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showCopySuccess(element, text);
+            } catch (err) {
+                console.error('Copy failed:', err);
+                alert('Copy failed. Please copy manually:\n\n' + text);
+            }
+            document.body.removeChild(textArea);
+        }
+        document.getElementById('connect-btn').addEventListener('click', connectWallet);
+        document.getElementById('sign-btn').addEventListener('click', signMessage);
+        checkMetaMask();
+    </script>
 </body>
+
 </html>
