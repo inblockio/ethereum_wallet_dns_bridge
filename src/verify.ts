@@ -240,10 +240,10 @@ async function verifySingleRecord(
   console.log(`   🔐 Verifying EIP-191 signature for: "${originalMessage}"`);
 
   try {
-    // ethers.utils.verifyMessage handles EIP-191 formatting automatically:
+    // ethers.verifyMessage handles EIP-191 formatting automatically:
     // It applies: "\x19Ethereum Signed Message:\n" + len(message) + message
     // This matches MetaMask's personal_sign behavior (EIP-191 version 0x45)
-    const recoveredAddress = ethers.utils.verifyMessage(originalMessage, parsedRecord.sig);
+    const recoveredAddress = ethers.verifyMessage(originalMessage, parsedRecord.sig);
 
     console.log(`   ℹ️  Expected wallet: ${parsedRecord.wallet}`);
     console.log(`   ℹ️  Recovered address: ${recoveredAddress}`);
@@ -458,11 +458,6 @@ export async function verifyProof(domain: string, lookupKey: string, expectedWal
       
       if (result.success) {
         overallSuccess = true;
-        
-        // If expectedWallet is specified and we found it, we can stop here
-        if (expectedWallet) {
-          break;
-        }
       }
     }
 
