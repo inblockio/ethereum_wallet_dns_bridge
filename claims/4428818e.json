@@ -1,0 +1,9 @@
+{
+  "forms_unique_id": "4428818e",
+  "forms_claim_secret": "2296f5f45b67dfac",
+  "forms_txt_name": "aqua._wallet.inblock.io",
+  "forms_wallet_address": "0x4b23da593596d94035c57adf6c2454216449b1b2",
+  "forms_domain": "inblock.io",
+  "forms_type": "dns_claim",
+  "signature_type": "ethereum:eip-191"
+}

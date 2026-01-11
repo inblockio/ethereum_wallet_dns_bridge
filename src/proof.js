@@ -13,7 +13,10 @@ exports.generateProof = generateProof;
 exports.generateProofFromSignature = generateProofFromSignature;
 exports.createMessageToSign = createMessageToSign;
 exports.formatTxtRecord = formatTxtRecord;
+exports.generateClaim = generateClaim;
+exports.formatClaimTxtRecord = formatClaimTxtRecord;
 const { ethers } = require('ethers');
+const crypto_1 = require("crypto");
 // Default expiration period in days
 const DEFAULT_EXPIRATION_DAYS = 90;
 function generateProof(domain_1, privateKey_1) {
@@ -51,4 +54,35 @@ function createMessageToSign(domain, timestamp, expiration) {
 }
 function formatTxtRecord(proof) {
     return `wallet=${proof.walletAddress}&timestamp=${proof.timestamp}&expiration=${proof.expiration}&sig=${proof.signature}`;
+}
+function generateClaim(domain_1, privateKey_1, txtName_1) {
+    return __awaiter(this, arguments, void 0, function* (domain, privateKey, txtName, expirationDays = DEFAULT_EXPIRATION_DAYS) {
+        const uniqueId = generateUniqueId();
+        const claimSecret = generateClaimSecret();
+        const itime = Math.floor(Date.now() / 1000);
+        const etime = itime + (expirationDays * 24 * 60 * 60);
+        // Message format: claim_secret&itime&domain&etime
+        const message = `${claimSecret}&${itime}&${domain}&${etime}`;
+        // Sign with EIP-191
+        const wallet = new ethers.Wallet(privateKey);
+        const signature = yield wallet.signMessage(message);
+        return {
+            forms_unique_id: uniqueId,
+            forms_claim_secret: claimSecret,
+            forms_txt_name: txtName,
+            forms_wallet_address: wallet.address,
+            forms_domain: domain,
+            forms_type: 'dns_claim',
+            signature_type: 'ethereum:eip-191'
+        };
+    });
+}
+function generateUniqueId() {
+    return (0, crypto_1.randomBytes)(4).toString('hex'); // 8 hex chars
+}
+function generateClaimSecret() {
+    return (0, crypto_1.randomBytes)(8).toString('hex'); // 16 hex chars
+}
+function formatClaimTxtRecord(uniqueId, itime, etime, signature) {
+    return `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
 }

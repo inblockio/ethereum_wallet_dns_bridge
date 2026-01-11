@@ -81,19 +81,19 @@
 
 <body>
     <div class="container">
-        <h1>🔐 Wallet-to-Domain Signature Tool</h1>
+        <h1>Wallet-to-Domain Signature Tool</h1>
         <p>Generate cryptographic proofs for DNS TXT records using MetaMask</p>
-        <div id="status" class="status">📦 Checking MetaMask...</div>
+        <div id="status" class="status">Checking MetaMask...</div>
         <div class="form-group">
             <label for="domain">Domain Name:</label>
             <input type="text" id="domain" placeholder="example.com">
         </div>
         <div style="padding:15px;background:#e8f4fd;border:1px solid #bee5eb;border-radius:4px;margin:15px 0;">
-            <strong>🏷️ DNS Record Location:</strong> <code>aqua._wallet.&lt;your-domain&gt;</code><br>
+            <strong>DNS Record Location:</strong> <code>aqua._wallet.&lt;your-domain&gt;</code><br>
             <small style="color:#6c757d;">The lookup key is fixed to "wallet" for simplicity</small>
         </div>
         <div id="wallet-info" style="display:none;padding:15px;background:#e3f2fd;border-radius:4px;margin:15px 0">
-            <strong>🦊 Connected Wallet:</strong>
+            <strong>Connected Wallet:</strong>
             <div id="wallet-address"></div>
         </div>
         <div class="form-group">
@@ -101,14 +101,14 @@
             <button id="sign-btn" class="btn" disabled>Generate Signature</button>
         </div>
         <div id="output-section" style="display:none">
-            <h3>🎉 Signature Generated!</h3>
+            <h3>Signature Generated!</h3>
             <div class="output">
                 <strong>CLI Command:</strong><br>
                 <div id="cli-command"
                     style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;">
                 </div>
                 <button onclick="copyText('cli-command')" class="btn"
-                    style="margin-top:10px;font-size:14px;background:#28a745">📋 Copy CLI Command</button>
+                    style="margin-top:10px;font-size:14px;background:#28a745">Copy CLI Command</button>
             </div>
             <div class="output">
                 <strong>DNS TXT Record:</strong><br>
@@ -116,10 +116,10 @@
                     style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;">
                 </div>
                 <button onclick="copyText('txt-record')" class="btn"
-                    style="margin-top:10px;font-size:14px;background:#007bff">📋 Copy TXT Record</button>
+                    style="margin-top:10px;font-size:14px;background:#007bff">Copy TXT Record</button>
             </div>
             <div style="margin-top:20px;padding:15px;background:#d1ecf1;border:1px solid #bee5eb;border-radius:4px;">
-                <strong>📝 Next Steps:</strong>
+                <strong>Next Steps:</strong>
                 <ol style="margin:10px 0;">
                     <li>Copy and run the CLI command above</li>
                     <li>Copy the TXT record content</li>
@@ -135,11 +135,11 @@
         async function checkMetaMask() {
             const statusDiv = document.getElementById('status');
             if (typeof window.ethereum !== 'undefined') {
-                statusDiv.innerHTML = '🦊 MetaMask detected! Ready to connect.';
+                statusDiv.innerHTML = 'MetaMask detected! Ready to connect.';
                 statusDiv.className = 'status success';
                 document.getElementById('connect-btn').disabled = false;
             } else {
-                statusDiv.innerHTML = '❌ MetaMask not found. Please install MetaMask.';
+                statusDiv.innerHTML = 'MetaMask not found. Please install MetaMask.';
                 statusDiv.className = 'status error';
             }
         }
@@ -149,7 +149,7 @@
                 account = accounts[0];
                 document.getElementById('wallet-info').style.display = 'block';
                 document.getElementById('wallet-address').textContent = account;
-                document.getElementById('connect-btn').textContent = '✅ Connected';
+                document.getElementById('connect-btn').textContent = 'Connected';
                 document.getElementById('connect-btn').disabled = true;
                 document.getElementById('sign-btn').disabled = false;
             } catch (error) {
@@ -161,34 +161,80 @@
             const domain = document.getElementById('domain').value.trim();
             if (!domain) { alert('Please enter a domain name'); return; }
             try {
-                timestamp = Math.floor(Date.now() / 1000).toString();
-                const expiration = Math.floor(Date.now() / 1000 + (90 * 24 * 60 * 60)).toString(); // 90 days default
-                // Message format: unix_timestamp|domain_name|expiration_timestamp
-                const message = `${timestamp}|${domain}|${expiration}`;
+                // Generate claim parameters
+                const uniqueId = generateUniqueId();
+                const claimSecret = generateClaimSecret();
+                const itime = Math.floor(Date.now() / 1000);
+                const etime = itime + (90 * 24 * 60 * 60); // 90 days default
+                // Message format: claim_secret&itime&domain&etime
+                const message = `${claimSecret}&${itime}&${domain}&${etime}`;
                 console.log('Signing message (before EIP-191 formatting):', message);
                 console.log('MetaMask will apply EIP-191 formatting automatically');
                 document.getElementById('sign-btn').textContent = 'Signing...';
                 document.getElementById('sign-btn').disabled = true;
                 const signature = await ethereum.request({ method: 'personal_sign', params: [message, account] });
-                generateOutputs(domain, signature, expiration);
+                generateOutputs(domain, uniqueId, claimSecret, itime, etime, signature);
             } catch (error) {
                 alert('Failed to sign: ' + error.message);
                 document.getElementById('sign-btn').textContent = 'Generate Signature';
                 document.getElementById('sign-btn').disabled = false;
             }
         }
-        function generateOutputs(domain, signature, expiration) {
-            const cliCommand = `node dist/wallet-tool.js generate-from-browser "${domain}" "${account}" "${signature}"`;
-            const txtRecord = `wallet=${account}&timestamp=${timestamp}&expiration=${expiration}&sig=${signature}`;
+
+        function generateUniqueId() {
+            return Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function generateClaimSecret() {
+            return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function generateOutputs(domain, uniqueId, claimSecret, itime, etime, signature) {
+            const txtName = `aqua._wallet.${domain}`;
+            const txtRecord = `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
+            const claimData = {
+                forms_unique_id: uniqueId,
+                forms_claim_secret: claimSecret,
+                forms_txt_name: txtName,
+                forms_dns_txt: txtRecord,
+                forms_wallet_address: account,
+                forms_domain: domain,
+                forms_type: 'dns_claim',
+                signature_type: 'ethereum:eip-191'
+            };
+            const cliCommand = `echo '${JSON.stringify(claimData)}' > claims/${uniqueId}.json && echo "Claim saved to claims/${uniqueId}.json" && echo "TXT Record: ${txtRecord}" && echo "Add TXT record at: ${txtName}"`;
 
             console.log('Generated CLI command:', cliCommand);
             console.log('Generated TXT record:', txtRecord);
-            console.log('Expires:', new Date(parseInt(expiration) * 1000).toISOString());
+            console.log('Claim data:', claimData);
+            console.log('Expires:', new Date(etime * 1000).toISOString());
 
-            document.getElementById('cli-command').textContent = cliCommand;
+            // Save claim to server (assuming Node server on port 3000)
+            fetch('http://localhost:3000/save-claim', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(claimData),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Claim saved:', data.message);
+                    // Update CLI command to indicate it's already saved
+                    document.getElementById('cli-command').innerHTML = `<strong>Claim automatically saved to server!</strong><br><code>${cliCommand}</code>`;
+                } else {
+                    console.error('Failed to save claim:', data.error);
+                    document.getElementById('cli-command').innerHTML = `<strong>Failed to save claim automatically. Use CLI:</strong><br><code>${cliCommand}</code>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error saving claim:', error);
+                document.getElementById('cli-command').innerHTML = `<strong>Failed to save claim automatically. Use CLI:</strong><br><code>${cliCommand}</code>`;
+            });
+
             document.getElementById('txt-record').textContent = txtRecord;
             document.getElementById('output-section').style.display = 'block';
-            document.getElementById('sign-btn').textContent = 'Generate New Signature';
+            document.getElementById('sign-btn').textContent = 'Generate New Claim';
             document.getElementById('sign-btn').disabled = false;
 
             // Log for debugging
@@ -213,7 +259,7 @@
         function showCopySuccess(element, originalText) {
             const button = element.nextElementSibling;
             const originalButtonText = button.textContent;
-            button.textContent = '✅ Copied!';
+            button.textContent = 'Copied!';
             button.style.background = '#28a745';
             setTimeout(() => {
                 button.textContent = originalButtonText;

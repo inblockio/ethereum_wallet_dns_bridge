@@ -1,7 +1,7 @@
 const { ethers } = require('ethers');
 import * as dns from 'dns';
 import { promisify } from 'util';
-import { TxtRecord } from './types';
+import { TxtRecord, AquaTreeClaim } from './types';
 import * as crypto from 'crypto';
 
 
@@ -308,36 +308,16 @@ async function verifySingleRecord(
   }
 }
 
-export async function verifyProof(domain: string, lookupKey: string, expectedWallet?: string): Promise<boolean> {
+export async function verifyClaim(claim: AquaTreeClaim): Promise<boolean> {
 
   // Rate limiting by domain
-  if (!checkRateLimit(domain)) {
+  if (!checkRateLimit(claim.forms_domain)) {
     console.log('\n⚠️  Rate limit exceeded. Please try again later.');
     console.log(`   ℹ️  Maximum ${RATE_LIMIT_MAX} verifications per minute per domain`);
     return false;
   }
 
-  // FIX: Parse the input to extract actual domain and lookupKey
-  let actualDomain: string;
-  let actualLookupKey: string;
-
-  // Check if the domain already contains the aqua._wallet prefix
-  if (domain.startsWith('aqua._')) {
-    // Extract the actual domain from something like "aqua._wallet.inblock.io"
-    const parts = domain.split('.');
-    if (parts.length >= 3 && parts[0] === 'aqua' && parts[1].startsWith('_')) {
-      actualLookupKey = parts[1].substring(1); // Remove the underscore
-      actualDomain = parts.slice(2).join('.'); // Everything after aqua._wallet
-    } else {
-      throw new Error('Invalid domain format');
-    }
-  } else {
-    // Normal case: domain is "inblock.io", lookupKey is "wallet"
-    actualDomain = domain;
-    actualLookupKey = lookupKey;
-  }
-
-  const recordName = `aqua._${actualLookupKey}.${actualDomain}`;
+  const recordName = claim.forms_txt_name;
 
   console.log('\n🔍 Starting verification tests...\n');
 
@@ -391,117 +371,127 @@ export async function verifyProof(domain: string, lookupKey: string, expectedWal
     } else {
       console.log('   ⚠️  DNSSEC: Not validated (DNS responses may be spoofed)');
     }
+    // Check for continuations record
+    let allTxtRecords = txtRecords.flat();
+    const continuationsRecord = allTxtRecords.find(record => record.startsWith("continuations="));
+    if (continuationsRecord) {
+      const continuations = continuationsRecord.split("=")[1].split(",");
+      console.log(`   ℹ️  Found continuations: ${continuations.join(", ")}`);
+      for (const cont of continuations) {
+        const contSubdomain = `${cont}.${claim.forms_domain}`;
+        try {
+          const contRecords = await new Promise<string[][]>((resolve, reject) => {
+            dns.resolveTxt(contSubdomain, (err, records) => {
+              if (err) reject(err);
+              else resolve(records);
+            });
+          });
+          allTxtRecords = allTxtRecords.concat(contRecords.flat());
+          console.log(`   ℹ️  Added ${contRecords.flat().length} records from ${contSubdomain}`);
+        } catch (err) {
+          console.log(`   ⚠️  Failed to query continuation ${contSubdomain}: ${err}`);
+        }
+      }
+    }
+
+    // Test 2: Filter and Process Claim Records
+    console.log(`
+Test 2/2: Filtering Claim Records`);
 
     // Test 2: Filter and Process Wallet Records
     console.log(`\nTest 2/2: Filtering Wallet Records`);
 
-    // Find all valid wallet records
-    const walletRecords = txtRecords.flat().filter(record =>
-      (record.includes('wallet=') &&
-       record.includes('timestamp=') &&
-       record.includes('expiration=') &&
-       record.includes('sig=')) ||
-      (record.includes('wallet=') &&
-       record.includes('timestamp=') &&
-       record.includes('sig='))
+    // Find all valid claim records (URL-encoded format)
+    const claimRecords = allTxtRecords.filter(record =>
+      record.includes("id=") &&
+      record.includes("itime=") &&
+      record.includes("etime=") &&
+      record.includes("sig=")
     );
 
-    if (walletRecords.length === 0) {
-      console.log('   ❌ FAIL: No wallet records with required format found');
-      console.log('   ℹ️  Expected: wallet=...&timestamp=...&expiration=...&sig=...');
-      console.log('   ℹ️  Found:', txtRecords.flat());
+    if (claimRecords.length === 0) {
+      console.log("   ❌ FAIL: No claim records with required format found");
+      console.log("   ℹ️  Expected: id=...&itime=...&etime=...&sig=...");
+      console.log("   ℹ️  Found:", allTxtRecords);
       return false;
     }
 
-    console.log(`   ✅ PASS: Found ${walletRecords.length} wallet record(s) with valid format`);
+    console.log(`   ✅ PASS: Found ${claimRecords.length} claim record(s) with valid format`);
 
-    // If expectedWallet is provided, check if it exists first
-    if (expectedWallet) {
-      const expectedWalletFound = walletRecords.some(record => {
+    // Find the claim record matching the unique ID
+    const targetRecord = claimRecords.find(record => {
+      const parsed = parseTxtRecord(record);
+      return parsed.id === claim.forms_unique_id;
+    });
+
+    if (!targetRecord) {
+      console.log(`
+❌ CLAIM RECORD NOT FOUND`);
+      console.log(`   ℹ️  Expected ID: ${claim.forms_unique_id}`);
+      console.log(`   ℹ️  Available IDs:`);
+      claimRecords.forEach((record, index) => {
         const parsed = parseTxtRecord(record);
-        return parsed.wallet && parsed.wallet.toLowerCase() === expectedWallet.toLowerCase();
+        console.log(`      ${index + 1}. ${parsed.id}`);
       });
+      return false;
+    }
 
-      if (!expectedWalletFound) {
-        console.log(`\n❌ EXPECTED WALLET NOT FOUND`);
-        console.log(`   ℹ️  Expected wallet: ${expectedWallet}`);
-        console.log(`   ℹ️  Available wallets:`);
-        walletRecords.forEach((record, index) => {
-          const parsed = parseTxtRecord(record);
-          if (parsed.wallet) {
-            console.log(`      ${index + 1}. ${parsed.wallet}`);
-          }
-        });
+    console.log(`   ✅ Found claim record with ID ${claim.forms_unique_id}`);
+
+    // Parse the record
+    const parsedRecord = parseTxtRecord(targetRecord);
+
+    // Reconstruct the signed message
+    const signedMessage = `${claim.forms_claim_secret}&${parsedRecord.itime}&${claim.forms_domain}&${parsedRecord.etime}`;
+
+    // Verify the signature
+    console.log(`
+🔐 Verifying EIP-191 signature`);
+    console.log(`   🔍 Message: "${signedMessage}"`);
+
+    try {
+      const recoveredAddress = ethers.verifyMessage(signedMessage, parsedRecord.sig);
+      console.log(`   ℹ️  Expected wallet: ${claim.forms_wallet_address}`);
+      console.log(`   ℹ️  Recovered address: ${recoveredAddress}`);
+
+      if (recoveredAddress.toLowerCase() !== claim.forms_wallet_address.toLowerCase()) {
+        console.log("   ❌ FAIL: Signature verification failed");
+        console.log("   🚨 The signature was NOT created by the claimed wallet address");
         return false;
       }
 
-      console.log(`   ✅ Expected wallet ${expectedWallet} found in records`);
+      console.log("   ✅ PASS: Signature verification successful");
+    } catch (error) {
+      console.log("   ❌ FAIL: Signature verification error");
+      console.log(`   ℹ️  Error: ${error instanceof Error ? error.message : error}`);
+      return false;
     }
 
-    // Process each wallet record
-    const results = [];
-    let overallSuccess = false;
+    // Check timestamps
+    const now = Math.floor(Date.now() / 1000);
+    const itime = parseInt(parsedRecord.itime);
+    const etime = parseInt(parsedRecord.etime);
 
-    for (let i = 0; i < walletRecords.length; i++) {
-      const record = walletRecords[i];
-      
-      // If expectedWallet is specified, only process that wallet
-      if (expectedWallet) {
-        const parsed = parseTxtRecord(record);
-        if (!parsed.wallet || parsed.wallet.toLowerCase() !== expectedWallet.toLowerCase()) {
-          continue;
-        }
-      }
-
-      const result = await verifySingleRecord(record, actualDomain, recordName, i + 1, dnssecValidated);
-      results.push(result);
-      
-      if (result.success) {
-        overallSuccess = true;
-      }
+    if (isNaN(itime) || isNaN(etime)) {
+      console.log("   ❌ FAIL: Invalid timestamp format");
+      return false;
     }
 
-    // Final summary
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`📊 FINAL VERIFICATION SUMMARY`);
-    console.log(`${'='.repeat(80)}`);
-
-    if (expectedWallet) {
-      console.log(`🎯 Target wallet: ${expectedWallet}`);
-      const targetResult = results.find(r => r.walletAddress.toLowerCase() === expectedWallet.toLowerCase());
-      if (targetResult && targetResult.success) {
-        console.log(`✅ Wallet ${expectedWallet} successfully verified!`);
-        console.log(`📅 Valid until: ${targetResult.expirationDate.toISOString()}`);
-        return true;
-      } else {
-        console.log(`❌ Wallet ${expectedWallet} verification failed`);
-        return false;
-      }
-    } else {
-      const successCount = results.filter(r => r.success).length;
-      const totalCount = results.length;
-      
-      console.log(`📈 Verification Results: ${successCount}/${totalCount} records passed`);
-      console.log(`🔍 Verified wallets:`);
-      
-      results.forEach((result, index) => {
-        if (result.success) {
-          console.log(`   ✅ ${index + 1}. ${result.walletAddress} (expires: ${result.expirationDate.toISOString()})`);
-        } else {
-          console.log(`   ❌ ${index + 1}. ${result.walletAddress} (verification failed)`);
-        }
-      });
-
-      if (overallSuccess) {
-        console.log(`\n🎉 Overall verification: SUCCESS`);
-        console.log(`   At least one wallet record was successfully verified`);
-      } else {
-        console.log(`\n❌ Overall verification: FAILED`);
-        console.log(`   No wallet records passed verification`);
-      }
-
-      return overallSuccess;
+    if (etime < now) {
+      console.log("   ❌ FAIL: Claim has expired");
+      console.log(`   ℹ️  Expired at: ${new Date(etime * 1000).toISOString()}`);
+      return false;
     }
+
+    console.log("   ✅ PASS: Timestamps valid");
+    console.log(`   ℹ️  Issued: ${new Date(itime * 1000).toISOString()}`);
+    console.log(`   ℹ️  Expires: ${new Date(etime * 1000).toISOString()}`);
+
+    // Success
+    console.log(`
+🎉 CLAIM VERIFICATION: SUCCESS`);
+    console.log(`✅ Wallet ${claim.forms_wallet_address} is cryptographically linked to domain ${claim.forms_domain}`);
+
 
   } catch (error) {
     console.log('   ❌ FAIL: DNS lookup error');
@@ -511,13 +501,13 @@ export async function verifyProof(domain: string, lookupKey: string, expectedWal
 }
 
 function parseTxtRecord(txt: string): TxtRecord {
-  // Use standard URLSearchParams for robust URL parameter parsing
+  // Parse URL-encoded format: id=<id>&itime=<itime>&etime=<etime>&sig=<sig>
   const params = new URLSearchParams(txt);
 
   return {
-    wallet: params.get('wallet') || '',
-    timestamp: params.get('timestamp') || '',
-    expiration: params.get('expiration') || '',
+    id: params.get('id') || '',
+    itime: params.get('itime') || '',
+    etime: params.get('etime') || '',
     sig: params.get('sig') || ''
   };
 }

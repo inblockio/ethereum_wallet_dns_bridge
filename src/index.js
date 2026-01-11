@@ -11,7 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
-const proof_1 = require("./proof");
+const { exec } = require('child_process');
 const verify_1 = require("./verify");
 commander_1.program
     .name('wallet-tool')
@@ -19,164 +19,95 @@ commander_1.program
     .version('1.0.0');
 commander_1.program
     .command('generate')
-    .description('Generate a proof using MetaMask browser signing')
+    .description('Generate a claim using MetaMask browser signing')
     .argument('<domain>', 'Domain name (e.g., example.com)')
     .argument('[walletAddress]', 'Optional: Expected wallet address for verification')
     .action((domain, walletAddress) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        console.log('🌐 Starting MetaMask Browser Signer...');
+        console.log('Starting MetaMask Browser Signer...');
         console.log(`\n📱 Generating proof for "${domain}"`);
         if (walletAddress) {
             console.log(`💡 Expected wallet address: ${walletAddress}`);
         }
-        console.log('\n🚀 Starting local HTTP server...');
-        const { spawn } = require('child_process');
-        // Start http-server
-        const server = spawn('npx', ['http-server', 'src', '-p', '8080', '-o', 'browser-signer.html', '--cors'], {
-            stdio: 'inherit',
-            shell: true
+        console.log('\nStarting local HTTP server...');
+        // Start simple HTTP server
+        const http = require('http');
+        const fs = require('fs');
+        const path = require('path');
+        const server = http.createServer((req, res) => {
+            if (req.url === '/' || req.url === '/browser-signer.html') {
+                const filePath = path.join(__dirname, '../src/browser-signer.html');
+                fs.readFile(filePath, (err, data) => {
+                    if (err) {
+                        res.writeHead(404, { 'Content-Type': 'text/plain' });
+                        res.end('File not found');
+                        return;
+                    }
+                    // Inject the domain into the HTML
+                    let html = data.toString();
+                    html = html.replace('<input id="domain" placeholder="e.g., example.com">', ` <input id="domain" value="${domain}" placeholder="e.g., example.com">`);
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(html);
+                });
+            }
+            else {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not found');
+            }
         });
-        console.log('✅ Server started successfully!');
-        console.log('🌐 Opening browser at: http://localhost:8080/browser-signer.html');
-        console.log(`\n📝 Instructions:`);
+        server.listen(8080, () => {
+            console.log('Server started successfully!');
+            console.log('Opening browser at: http://localhost:8080/browser-signer.html');
+            // Open browser immediately since server is ready
+            exec('xdg-open http://localhost:8080/browser-signer.html', (err) => {
+                if (err)
+                    console.log('Could not open browser automatically. Please open http://localhost:8080/browser-signer.html manually.');
+            });
+        });
+        console.log(`
+Instructions:`);
         console.log('1. Connect your MetaMask wallet');
         console.log(`2. Enter domain: ${domain}`);
-        console.log('3. Click "Generate Signature"');
-        console.log('4. Copy and run the generated CLI command');
-        console.log('\n⚠️  Press Ctrl+C to stop the server');
+        console.log('3. Click "Generate Claim"');
+        console.log('4. Copy and run the generated CLI command (saves to claims/)');
+        console.log('5. Publish the TXT record to DNS');
+        console.log("\nWARNING: Press Ctrl+C to stop the server");
+        // Handle server shutdown
         // Handle server shutdown
         process.on('SIGINT', () => {
-            console.log('\n🛑 Shutting down server...');
-            server.kill();
-            process.exit(0);
+            console.log('\nShutting down server...');
+            server.close(() => {
+                process.exit(0);
+            });
         });
     }
     catch (error) {
-        console.error('❌ Error starting server:', error instanceof Error ? error.message : error);
+        console.error('Error starting server:', error instanceof Error ? error.message : error);
         console.log('\n🔧 Manual fallback:');
         console.log('Run: wallet-tool browser');
         process.exit(1);
     }
 }));
-commander_1.program
-    .command('generate-from-browser')
-    .description('Generate proof from browser MetaMask signature')
-    .argument('<domain>', 'Domain name (e.g., example.com)')
-    .argument('<walletAddress>', 'Wallet address from MetaMask')
-    .argument('<signature>', 'Signature from MetaMask')
-    .action((domain, walletAddress, signature) => __awaiter(void 0, void 0, void 0, function* () {
+commander_1.program.command('verify').description('Verify a claim from JSON file').argument('<claimFile>', 'Path to claim JSON file in claims/ folder (e.g., claims/abc123.json)').action((claimFile) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        console.log('🔐 Processing browser signature...');
-        // Generate timestamp and expiration from local system time
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const expiration = Math.floor(Date.now() / 1000 + (90 * 24 * 60 * 60)).toString(); // 90 days default
-        console.log(`\n🌐 Domain: ${domain}`);
-        console.log(`🦊 Wallet Address: ${walletAddress}`);
-        console.log(`⏰ System Timestamp: ${timestamp}`);
-        console.log(`📅 Expiration: ${new Date(parseInt(expiration) * 1000).toISOString()}`);
-        // Create proof object with expiration
-        const proof = (0, proof_1.generateProofFromSignature)(domain, walletAddress, timestamp, expiration, signature);
-        const txtRecord = (0, proof_1.formatTxtRecord)(proof);
-        console.log('\n✅ Proof generated successfully from browser signature!');
-        console.log('\n📋 TXT Record Content:');
-        console.log(`${txtRecord}`);
-        console.log('\n📍 DNS Configuration:');
-        console.log(`Add the above content as a TXT record at: aqua._wallet.${domain}`);
-        console.log('\n💡 Instructions:');
-        console.log('1. Copy the TXT record content above');
-        console.log('2. Log into your DNS provider');
-        console.log('3. Create a new TXT record with the specified name');
-        console.log('4. Paste the content as the value');
-        console.log('5. Save the DNS record');
-        console.log('6. Wait for DNS propagation (up to 24 hours)');
-        console.log(`7. Verify with: wallet-tool verify ${domain}`);
-    }
-    catch (error) {
-        console.error('❌ Error processing signature:', error instanceof Error ? error.message : error);
-        process.exit(1);
-    }
-}));
-commander_1.program
-    .command('generate-interactive')
-    .description('Launch browser signer for MetaMask signatures')
-    .action(() => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        console.log('🌐 Browser Signer Tool');
-        console.log('\n📱 To generate signatures with MetaMask:');
-        console.log('1. Open src/browser-signer.html in your web browser');
-        console.log('2. Connect your MetaMask wallet');
-        console.log('3. Enter your domain name');
-        console.log('4. Click "Generate Signature"');
-        console.log('5. Copy and run the generated CLI command');
-        console.log('\n💡 The browser tool will generate the signature with proper timestamp formatting.');
-        console.log('   The CLI command will use your local system time for the final DNS record.');
-    }
-    catch (error) {
-        console.error('❌ Error:', error instanceof Error ? error.message : error);
-        process.exit(1);
-    }
-}));
-commander_1.program
-    .command('browser')
-    .description('Start local server for MetaMask signing interface')
-    .action(() => __awaiter(void 0, void 0, void 0, function* () {
-    console.log('🌐 Starting MetaMask Browser Signer Server...');
-    console.log('\n🚀 Starting local HTTP server...');
-    try {
-        console.log('📦 Installing http-server if needed...');
-        const { spawn } = require('child_process');
-        // Start http-server
-        const server = spawn('npx', ['http-server', 'src', '-p', '8080', '-o', 'browser-signer.html', '--cors'], {
-            stdio: 'inherit',
-            shell: true
-        });
-        console.log('\n✅ Server starting...');
-        console.log('🌐 Opening browser at: http://localhost:8080/browser-signer.html');
-        console.log('\n💡 If browser doesn\'t open automatically:');
-        console.log('   - Open your browser');
-        console.log('   - Go to: http://localhost:8080/browser-signer.html');
-        console.log('   - Make sure MetaMask extension is installed');
-        console.log('\n⚠️  Press Ctrl+C to stop the server');
-        // Handle server shutdown
-        process.on('SIGINT', () => {
-            console.log('\n🛑 Shutting down server...');
-            server.kill();
-            process.exit(0);
-        });
-    }
-    catch (error) {
-        console.error('❌ Error starting server:', error);
-        console.log('\n🔧 Manual setup:');
-        console.log('1. Install http-server: npm install -g http-server');
-        console.log('2. Run: npx http-server src -p 8080 -o browser-signer.html');
-        console.log('3. Open: http://localhost:8080/browser-signer.html');
-    }
-}));
-commander_1.program
-    .command('verify')
-    .description('Verify a wallet-to-domain association')
-    .argument('<domain>', 'Domain name (e.g., example.com)')
-    .argument('[expectedWallet]', 'Expected wallet address (optional)')
-    .action((domain, expectedWallet) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        console.log(`🔍 Verifying wallet association for: ${domain}`);
-        console.log(`ℹ️  DNS record location: aqua._wallet.${domain}`);
-        if (expectedWallet) {
-            console.log(`🟰  Wallet address expected: aqua._wallet.${expectedWallet}`);
-        }
-        const isValid = yield (0, verify_1.verifyProof)(domain, 'wallet', expectedWallet);
+        console.log(`Verifying claim from: ${claimFile}`);
+        // Load claim from JSON file
+        const fs = require('fs');
+        const claimData = JSON.parse(fs.readFileSync(claimFile, 'utf8'));
+        console.log(`Claim ID: ${claimData.forms_unique_id}`);
+        console.log(`Domain: ${claimData.forms_domain}`);
+        console.log(`Wallet: ${claimData.forms_wallet_address}`);
+        console.log(`DNS: ${claimData.forms_txt_name}`);
+        const isValid = yield (0, verify_1.verifyClaim)(claimData);
         if (!isValid) {
-            console.log('\n📋 Troubleshooting checklist:');
-            console.log('• Ensure DNS record exists at aqua._wallet.' + domain);
-            console.log('• Check DNS record format: wallet=address&timestamp=time&sig=signature');
-            console.log('• Verify DNS propagation (can take up to 24 hours)');
-            console.log('• Confirm signature was generated for the correct domain');
-            console.log('• Test with: dig TXT aqua._wallet.' + domain);
+            console.log("• Check DNS record format: id=...&itime=...&etime=...&sig=...");
+            console.log("• Confirm claim JSON is correct and signature matches");
+            console.log("• Test with: dig TXT " + claimData.forms_txt_name);
             process.exit(1);
         }
     }
     catch (error) {
-        console.error('❌ Verification error:', error instanceof Error ? error.message : error);
+        console.error('Verification error:', error instanceof Error ? error.message : error);
         process.exit(1);
     }
 }));
