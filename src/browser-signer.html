@@ -1,295 +1,584 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>MetaMask Wallet Signer</title>
+    <title>DNS Wallet Bridge</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-purple: #a371f7;
+            --accent-red: #f85149;
+            --accent-orange: #d29922;
         }
 
-        .container {
-            background: white;
-            padding: 30px;
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .app {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 48px 24px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 12px;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .header-icon svg {
+            width: 28px;
+            height: 28px;
+            fill: white;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
             border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1)
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .status-bar.pending {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .status-bar.success {
+            background: rgba(63, 185, 80, 0.1);
+            color: var(--accent-green);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .status-bar.error {
+            background: rgba(248, 81, 73, 0.1);
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
         }
 
         .form-group {
-            margin-bottom: 20px
+            margin-bottom: 20px;
         }
 
         label {
             display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
             margin-bottom: 8px;
-            font-weight: bold
         }
 
         input {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 15px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+
+        input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
         }
 
         .btn {
-            background: #0066cc;
-            color: white;
+            flex: 1;
+            padding: 12px 20px;
             border: none;
-            padding: 12px 24px;
-            border-radius: 4px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
-            margin-right: 10px
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
         .btn:disabled {
-            background: #ccc
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
-        .status {
-            padding: 15px;
-            border-radius: 4px;
-            margin: 20px 0
+        .btn-primary {
+            background: var(--accent-blue);
+            color: white;
         }
 
-        .status.success {
-            background: #d4edda;
-            color: #155724
+        .btn-primary:hover:not(:disabled) {
+            background: #4c9aed;
         }
 
-        .status.error {
-            background: #f8d7da;
-            color: #721c24
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
         }
 
-        .output {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            padding: 15px;
-            font-family: monospace;
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--border-color);
+        }
+
+        .btn-success {
+            background: var(--accent-green);
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background: #2ea043;
+        }
+
+        .btn-purple {
+            background: var(--accent-purple);
+            color: white;
+        }
+
+        .btn-purple:hover:not(:disabled) {
+            background: #8957e5;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
             font-size: 14px;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+        }
+
+        .info-value {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 13px;
+            color: var(--accent-blue);
+        }
+
+        .notification {
+            display: none;
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .notification.success {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+        }
+
+        .notification.error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+        }
+
+        .notification-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .notification.success .notification-title { color: var(--accent-green); }
+        .notification.error .notification-title { color: var(--accent-red); }
+
+        .notification-message {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .output-section {
+            display: none;
+        }
+
+        .output-box {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+
+        .output-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .output-value {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 12px;
+            color: var(--text-primary);
+            word-break: break-all;
+            line-height: 1.6;
+        }
+
+        .steps {
             margin-top: 20px;
-            word-break: break-all
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .steps-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .step {
+            display: flex;
+            gap: 12px;
+            padding: 8px 0;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .step-number {
+            width: 20px;
+            height: 20px;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-primary);
+            flex-shrink: 0;
+        }
+
+        code {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 12px;
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent-orange);
+        }
+
+        .wallet-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .wallet-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
         }
     </style>
 </head>
-
 <body>
-    <div class="container">
-        <h1>Wallet-to-Domain Signature Tool</h1>
-        <p>Generate cryptographic proofs for DNS TXT records using MetaMask</p>
-        <div id="status" class="status">Checking MetaMask...</div>
-        <div class="form-group">
-            <label for="domain">Domain Name:</label>
-            <input type="text" id="domain" placeholder="example.com">
-        </div>
-        <div style="padding:15px;background:#e8f4fd;border:1px solid #bee5eb;border-radius:4px;margin:15px 0;">
-            <strong>DNS Record Location:</strong> <code>aqua._wallet.&lt;your-domain&gt;</code><br>
-            <small style="color:#6c757d;">The lookup key is fixed to "wallet" for simplicity</small>
-        </div>
-        <div id="wallet-info" style="display:none;padding:15px;background:#e3f2fd;border-radius:4px;margin:15px 0">
-            <strong>Connected Wallet:</strong>
-            <div id="wallet-address"></div>
-        </div>
-        <div class="form-group">
-            <button id="connect-btn" class="btn" disabled>Connect MetaMask</button>
-            <button id="sign-btn" class="btn" disabled>Generate Signature</button>
-        </div>
-        <div id="output-section" style="display:none">
-            <h3>Signature Generated!</h3>
-            <div class="output">
-                <strong>CLI Command:</strong><br>
-                <div id="cli-command"
-                    style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;">
-                </div>
-                <button onclick="copyText('cli-command')" class="btn"
-                    style="margin-top:10px;font-size:14px;background:#28a745">Copy CLI Command</button>
+    <div class="app">
+        <header class="header">
+            <div class="header-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
             </div>
-            <div class="output">
-                <strong>DNS TXT Record:</strong><br>
-                <div id="txt-record"
-                    style="margin:10px 0;padding:10px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;word-break:break-all;user-select:all;">
-                </div>
-                <button onclick="copyText('txt-record')" class="btn"
-                    style="margin-top:10px;font-size:14px;background:#007bff">Copy TXT Record</button>
+            <h1>DNS Wallet Bridge</h1>
+            <p class="subtitle">Cryptographic wallet-to-domain verification</p>
+        </header>
+
+        <div id="status-card" class="card">
+            <div id="status" class="status-bar pending">
+                <span class="status-dot"></span>
+                <span>Checking MetaMask...</span>
             </div>
-            <div style="margin-top:20px;padding:15px;background:#d1ecf1;border:1px solid #bee5eb;border-radius:4px;">
-                <strong>Next Steps:</strong>
-                <ol style="margin:10px 0;">
-                    <li>Copy and run the CLI command above</li>
-                    <li>Copy the TXT record content</li>
-                    <li>Add TXT record to your DNS: <code>aqua._wallet.&lt;domain&gt;</code></li>
-                    <li>Wait for DNS propagation (up to 24 hours)</li>
-                    <li>Use verify command: <code>wallet-tool verify &lt;domain&gt;</code></li>
-                </ol>
+        </div>
+
+        <div class="card">
+            <div class="form-group">
+                <label>Domain</label>
+                <input type="text" id="domain" placeholder="example.com">
+            </div>
+
+            <div class="info-row">
+                <span class="info-label">DNS Record Location</span>
+                <span class="info-value">_aw.&lt;domain&gt;</span>
+            </div>
+
+            <div id="wallet-info" style="display:none">
+                <div class="info-row">
+                    <span class="info-label">Connected Wallet</span>
+                    <span id="wallet-address" class="wallet-badge"></span>
+                </div>
+            </div>
+
+            <div class="btn-group" style="margin-top: 20px">
+                <button id="connect-btn" class="btn btn-secondary" disabled>Connect Wallet</button>
+                <button id="sign-btn" class="btn btn-primary" disabled>Generate Claim</button>
+            </div>
+        </div>
+
+        <div id="notification" class="notification">
+            <div class="notification-header">
+                <span id="notification-title" class="notification-title"></span>
+            </div>
+            <p id="notification-message" class="notification-message"></p>
+            <button id="download-btn" class="btn btn-purple" style="display:none; width: auto;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                Download Claim
+            </button>
+        </div>
+
+        <div id="output-section" class="output-section">
+            <div class="card">
+                <div class="output-label">TXT Record Value</div>
+                <div class="output-box">
+                    <div id="txt-record" class="output-value"></div>
+                </div>
+                <button onclick="copyText('txt-record')" class="btn btn-success" style="width: 100%">
+                    Copy to Clipboard
+                </button>
+
+                <div class="steps">
+                    <div class="steps-title">Next Steps</div>
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <span>Add TXT record to DNS at <code>_aw.domain</code></span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <span>Wait for DNS propagation (5min - 24hrs)</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <span>Verify with <code>wallet-tool verify claims/id.json</code></span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
     <script>
-        let account, timestamp, nonce;
+        let account, currentClaimData;
+
         async function checkMetaMask() {
-            const statusDiv = document.getElementById('status');
+            const status = document.getElementById('status');
             if (typeof window.ethereum !== 'undefined') {
-                statusDiv.innerHTML = 'MetaMask detected! Ready to connect.';
-                statusDiv.className = 'status success';
+                status.innerHTML = '<span class="status-dot"></span><span>MetaMask detected</span>';
+                status.className = 'status-bar success';
                 document.getElementById('connect-btn').disabled = false;
             } else {
-                statusDiv.innerHTML = 'MetaMask not found. Please install MetaMask.';
-                statusDiv.className = 'status error';
+                status.innerHTML = '<span class="status-dot"></span><span>MetaMask not found</span>';
+                status.className = 'status-bar error';
             }
         }
+
         async function connectWallet() {
-            try { 
+            try {
                 const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
                 account = accounts[0];
                 document.getElementById('wallet-info').style.display = 'block';
-                document.getElementById('wallet-address').textContent = account;
+                document.getElementById('wallet-address').textContent = account.slice(0, 6) + '...' + account.slice(-4);
                 document.getElementById('connect-btn').textContent = 'Connected';
                 document.getElementById('connect-btn').disabled = true;
                 document.getElementById('sign-btn').disabled = false;
             } catch (error) {
-                alert('Failed to connect: ' + error.message);
+                showNotification('error', 'Connection Failed', error.message);
             }
         }
 
         async function signMessage() {
-            const domain = document.getElementById('domain').value.trim();
-            if (!domain) { alert('Please enter a domain name'); return; }
+            const domain = document.getElementById('domain').value.trim().toLowerCase();
+            if (!domain) { showNotification('error', 'Invalid Input', 'Please enter a domain name'); return; }
+
             try {
-                // Generate claim parameters
-                const uniqueId = generateUniqueId();
-                const claimSecret = generateClaimSecret();
+                const uniqueId = generateRandomHex(4);
+                const claimSecret = generateRandomHex(8);
                 const itime = Math.floor(Date.now() / 1000);
-                const etime = itime + (90 * 24 * 60 * 60); // 90 days default
-                // Message format: claim_secret&itime&domain&etime
+                const etime = itime + (90 * 24 * 60 * 60);
                 const message = `${claimSecret}&${itime}&${domain}&${etime}`;
-                console.log('Signing message (before EIP-191 formatting):', message);
-                console.log('MetaMask will apply EIP-191 formatting automatically');
+
                 document.getElementById('sign-btn').textContent = 'Signing...';
                 document.getElementById('sign-btn').disabled = true;
+
                 const signature = await ethereum.request({ method: 'personal_sign', params: [message, account] });
-                generateOutputs(domain, uniqueId, claimSecret, itime, etime, signature);
+
+                const txtName = `_aw.${domain}`;
+                const txtRecord = `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
+
+                currentClaimData = {
+                    forms_unique_id: uniqueId,
+                    forms_claim_secret: claimSecret,
+                    forms_txt_name: txtName,
+                    forms_txt_record: txtRecord,
+                    forms_wallet_address: account,
+                    forms_domain: domain,
+                    forms_type: 'dns_claim',
+                    signature_type: 'ethereum:eip-191',
+                    itime: itime.toString(),
+                    etime: etime.toString(),
+                    sig: signature
+                };
+
+                saveToServer(currentClaimData);
+
+                document.getElementById('txt-record').textContent = txtRecord;
+                document.getElementById('output-section').style.display = 'block';
+                document.getElementById('sign-btn').textContent = 'Generate New';
+                document.getElementById('sign-btn').disabled = false;
+
             } catch (error) {
-                alert('Failed to sign: ' + error.message);
-                document.getElementById('sign-btn').textContent = 'Generate Signature';
+                showNotification('error', 'Signing Failed', error.message);
+                document.getElementById('sign-btn').textContent = 'Generate Claim';
                 document.getElementById('sign-btn').disabled = false;
             }
         }
 
-        function generateUniqueId() {
-            return Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        function generateClaimSecret() {
-            return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-        function generateOutputs(domain, uniqueId, claimSecret, itime, etime, signature) {
-            const txtName = `aqua._wallet.${domain}`;
-            const txtRecord = `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
-            const claimData = {
-                forms_unique_id: uniqueId,
-                forms_claim_secret: claimSecret,
-                forms_txt_name: txtName,
-                forms_dns_txt: txtRecord,
-                forms_wallet_address: account,
-                forms_domain: domain,
-                forms_type: 'dns_claim',
-                signature_type: 'ethereum:eip-191'
-            };
-            const cliCommand = `echo '${JSON.stringify(claimData)}' > claims/${uniqueId}.json && echo "Claim saved to claims/${uniqueId}.json" && echo "TXT Record: ${txtRecord}" && echo "Add TXT record at: ${txtName}"`;
-
-            console.log('Generated CLI command:', cliCommand);
-            console.log('Generated TXT record:', txtRecord);
-            console.log('Claim data:', claimData);
-            console.log('Expires:', new Date(etime * 1000).toISOString());
-
-            // Save claim to server (assuming Node server on port 3000)
+        function saveToServer(claimData) {
             fetch('http://localhost:3000/save-claim', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(claimData),
             })
-            .then(response => response.json())
+            .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    console.log('Claim saved:', data.message);
-                    // Update CLI command to indicate it's already saved
-                    document.getElementById('cli-command').innerHTML = `<strong>Claim automatically saved to server!</strong><br><code>${cliCommand}</code>`;
+                    showNotification('success', 'Claim Generated', `Saved to claims/${claimData.forms_unique_id}.json`);
                 } else {
-                    console.error('Failed to save claim:', data.error);
-                    document.getElementById('cli-command').innerHTML = `<strong>Failed to save claim automatically. Use CLI:</strong><br><code>${cliCommand}</code>`;
+                    showNotification('error', 'Server Error', 'Download manually using the button below');
                 }
+                document.getElementById('download-btn').style.display = 'inline-flex';
             })
-            .catch(error => {
-                console.error('Error saving claim:', error);
-                document.getElementById('cli-command').innerHTML = `<strong>Failed to save claim automatically. Use CLI:</strong><br><code>${cliCommand}</code>`;
+            .catch(() => {
+                showNotification('error', 'Server Unavailable', 'Download manually using the button below');
+                document.getElementById('download-btn').style.display = 'inline-flex';
             });
-
-            document.getElementById('txt-record').textContent = txtRecord;
-            document.getElementById('output-section').style.display = 'block';
-            document.getElementById('sign-btn').textContent = 'Generate New Claim';
-            document.getElementById('sign-btn').disabled = false;
-
-            // Log for debugging
-            console.log('Output section displayed, content set');
-        }
-        function copyText(elementId) {
-            const element = document.getElementById(elementId);
-            const originalText = element.textContent;
-
-            // Try modern clipboard API first
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(originalText).then(() => {
-                    showCopySuccess(element, originalText);
-                }).catch(() => {
-                    fallbackCopy(originalText, element);
-                });
-            } else {
-                fallbackCopy(originalText, element);
-            }
         }
 
-        function showCopySuccess(element, originalText) {
-            const button = element.nextElementSibling;
-            const originalButtonText = button.textContent;
-            button.textContent = 'Copied!';
-            button.style.background = '#28a745';
-            setTimeout(() => {
-                button.textContent = originalButtonText;
-                button.style.background = '#0066cc';
-            }, 2000);
+        function showNotification(type, title, message) {
+            const el = document.getElementById('notification');
+            el.className = `notification ${type}`;
+            el.style.display = 'block';
+            document.getElementById('notification-title').textContent = title;
+            document.getElementById('notification-message').textContent = message;
         }
 
-        function fallbackCopy(text, element) {
-            // Fallback for older browsers or insecure contexts
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                showCopySuccess(element, text);
-            } catch (err) {
-                console.error('Copy failed:', err);
-                alert('Copy failed. Please copy manually:\n\n' + text);
-            }
-            document.body.removeChild(textArea);
+        function downloadClaim() {
+            if (!currentClaimData) return;
+            const blob = new Blob([JSON.stringify(currentClaimData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentClaimData.forms_unique_id}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
+
+        function generateRandomHex(bytes) {
+            return Array.from(crypto.getRandomValues(new Uint8Array(bytes)))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function copyText(id) {
+            navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+                const btn = event.target.closest('button');
+                const orig = btn.innerHTML;
+                btn.innerHTML = 'Copied!';
+                setTimeout(() => btn.innerHTML = orig, 2000);
+            });
+        }
+
         document.getElementById('connect-btn').addEventListener('click', connectWallet);
         document.getElementById('sign-btn').addEventListener('click', signMessage);
+        document.getElementById('download-btn').addEventListener('click', downloadClaim);
         checkMetaMask();
     </script>
 </body>
-
 </html>

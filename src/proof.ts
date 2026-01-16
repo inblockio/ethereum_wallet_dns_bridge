@@ -1,61 +1,30 @@
-const { ethers } = require('ethers');
+import { ethers } from 'ethers';
 import { randomBytes } from 'crypto';
-import { Proof, AquaTreeClaim } from './types';
+import * as dns from 'dns';
+import { AquaTreeClaim } from './types';
 
-// Default expiration period in days
 const DEFAULT_EXPIRATION_DAYS = 90;
+const MAX_CLAIMS_PER_SUBDOMAIN = 49;
+const DNS_SERVERS = ['8.8.8.8', '8.8.4.4', '1.1.1.1', '1.0.0.1'];
 
-export async function generateProof(domain: string, privateKey: string, expirationDays: number = DEFAULT_EXPIRATION_DAYS): Promise<Proof> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const expiration = Math.floor(Date.now() / 1000 + (expirationDays * 24 * 60 * 60)).toString();
-  
-  // Message format: unix_timestamp|domain_name|expiration_timestamp
-  const message = `${timestamp}|${domain}|${expiration}`;
-  
-  // Sign with EIP-191 compliant personal_sign format
-  // ethers.js automatically applies: "\x19Ethereum Signed Message:\n" + len(message) + message
-  // This matches MetaMask's personal_sign behavior (EIP-191 version 0x45)
-  const wallet = new ethers.Wallet(privateKey);
-  const signature = await wallet.signMessage(message);
-  
-  return {
-    walletAddress: wallet.address,
-    domainName: domain,
-    timestamp,
-    expiration,
-    signature
-  };
-}
+const resolver = new dns.Resolver();
+resolver.setServers(DNS_SERVERS);
 
-// Function for MetaMask signatures with expiration
-export function generateProofFromSignature(domain: string, walletAddress: string, timestamp: string, expiration: string, signature: string): Proof {
-  return {
-    walletAddress,
-    domainName: domain,
-    timestamp,
-    expiration,
-    signature
-  };
-}
-
-export function createMessageToSign(domain: string, timestamp: string, expiration: string): string {
-  return `${timestamp}|${domain}|${expiration}`;
-}
-
-export function formatTxtRecord(proof: Proof): string {
-  return `wallet=${proof.walletAddress}&timestamp=${proof.timestamp}&expiration=${proof.expiration}&sig=${proof.signature}`;
-}
-
-export async function generateClaim(domain: string, privateKey: string, txtName: string, expirationDays: number = DEFAULT_EXPIRATION_DAYS): Promise<AquaTreeClaim> {
-  const uniqueId = generateUniqueId();
-  const claimSecret = generateClaimSecret();
+/**
+ * Generate a new claim
+ */
+export async function generateClaim(
+  domain: string,
+  privateKey: string,
+  txtName: string,
+  expirationDays = DEFAULT_EXPIRATION_DAYS
+): Promise<AquaTreeClaim> {
+  const uniqueId = await generateUniqueId(txtName);
+  const claimSecret = randomBytes(8).toString('hex');
   const itime = Math.floor(Date.now() / 1000);
-  const etime = itime + (expirationDays * 24 * 60 * 60);
+  const etime = itime + expirationDays * 86400;
 
-  // Message format: claim_secret&itime&domain&etime
   const message = `${claimSecret}&${itime}&${domain}&${etime}`;
-
-  // Sign with EIP-191
   const wallet = new ethers.Wallet(privateKey);
   const signature = await wallet.signMessage(message);
 
@@ -63,21 +32,122 @@ export async function generateClaim(domain: string, privateKey: string, txtName:
     forms_unique_id: uniqueId,
     forms_claim_secret: claimSecret,
     forms_txt_name: txtName,
+    forms_txt_record: formatClaimTxtRecord(uniqueId, itime, etime, signature),
     forms_wallet_address: wallet.address,
     forms_domain: domain,
     forms_type: 'dns_claim',
-    signature_type: 'ethereum:eip-191'
+    signature_type: 'ethereum:eip-191',
+    itime: itime.toString(),
+    etime: etime.toString(),
+    sig: signature
   };
 }
 
-function generateUniqueId(): string {
-  return randomBytes(4).toString('hex'); // 8 hex chars
+/**
+ * Generate a claim with automatic subdomain overflow handling
+ */
+export async function generateClaimWithOverflow(
+  domain: string,
+  privateKey: string,
+  expirationDays = DEFAULT_EXPIRATION_DAYS
+): Promise<{ claim: AquaTreeClaim; continuationsUpdate: string | null; isNewSubdomain: boolean }> {
+  const { subdomain, isNewSubdomain, continuationsUpdate } = await findAvailableSubdomain(domain);
+  const claim = await generateClaim(domain, privateKey, subdomain, expirationDays);
+  return { claim, continuationsUpdate, isNewSubdomain };
 }
 
-function generateClaimSecret(): string {
-  return randomBytes(8).toString('hex'); // 16 hex chars
+/**
+ * Find available subdomain, handling overflow to _aw2, _aw3, etc.
+ */
+export async function findAvailableSubdomain(domain: string): Promise<{
+  subdomain: string;
+  isNewSubdomain: boolean;
+  continuationsUpdate: string | null;
+}> {
+  let subdomain = `_aw.${domain}`;
+  let count = await countClaims(subdomain);
+
+  if (count < MAX_CLAIMS_PER_SUBDOMAIN) {
+    return { subdomain, isNewSubdomain: count === 0, continuationsUpdate: null };
+  }
+
+  // Check existing continuations
+  const continuations = await getContinuations(subdomain);
+
+  for (const cont of continuations) {
+    subdomain = `${cont}.${domain}`;
+    count = await countClaims(subdomain);
+    if (count < MAX_CLAIMS_PER_SUBDOMAIN) {
+      return { subdomain, isNewSubdomain: false, continuationsUpdate: null };
+    }
+  }
+
+  // Create new overflow subdomain
+  const nextIndex = continuations.length + 2;
+  const newSubdomain = `_aw${nextIndex}.${domain}`;
+  const newContinuation = `_aw${nextIndex}`;
+  const updatedContinuations = continuations.length > 0
+    ? `continuations=${[...continuations, newContinuation].join(',')}`
+    : `continuations=${newContinuation}`;
+
+  return { subdomain: newSubdomain, isNewSubdomain: true, continuationsUpdate: updatedContinuations };
 }
 
 export function formatClaimTxtRecord(uniqueId: string, itime: number, etime: number, signature: string): string {
   return `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
+}
+
+// --- Private helpers ---
+
+async function generateUniqueId(subdomain: string, maxRetries = 10): Promise<string> {
+  const existingIds = await getExistingIds(subdomain);
+
+  for (let i = 0; i < maxRetries; i++) {
+    const id = randomBytes(4).toString('hex');
+    if (!existingIds.includes(id.toLowerCase())) {
+      return id;
+    }
+  }
+
+  throw new Error('Failed to generate unique ID after retries');
+}
+
+async function getExistingIds(subdomain: string): Promise<string[]> {
+  return new Promise(resolve => {
+    resolver.resolveTxt(subdomain, (err, records) => {
+      if (err) return resolve([]);
+      const ids: string[] = [];
+      for (const record of records.flat()) {
+        const match = record.match(/id=([a-f0-9]+)/i);
+        if (match) ids.push(match[1].toLowerCase());
+      }
+      resolve(ids);
+    });
+  });
+}
+
+async function countClaims(subdomain: string): Promise<number> {
+  return new Promise(resolve => {
+    resolver.resolveTxt(subdomain, (err, records) => {
+      if (err) return resolve(0);
+      const count = records.flat().filter(r =>
+        r.includes('id=') && r.includes('itime=') && r.includes('etime=') && r.includes('sig=')
+      ).length;
+      resolve(count);
+    });
+  });
+}
+
+async function getContinuations(subdomain: string): Promise<string[]> {
+  return new Promise(resolve => {
+    resolver.resolveTxt(subdomain, (err, records) => {
+      if (err) return resolve([]);
+      const cont = records.flat().find(r => r.startsWith('continuations='));
+      if (cont) {
+        resolve(cont.split('=')[1].split(',').map(c => c.trim()));
+      } else {
+        resolve([]);
+      }
+    });
+  });
 }

@@ -29,7 +29,7 @@ async function build() {
     console.log('\n🚀 Usage:');
     console.log('  node dist/wallet-tool.js generate <domain>');
     console.log('  node dist/wallet-tool.js server');
-    console.log('  node dist/wallet-tool.js verify <domain>');
+    console.log('  node dist/wallet-tool.js verify <claim-file>');
     
   } catch (error) {
     console.error('❌ Build failed:', error);

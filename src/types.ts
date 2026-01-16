@@ -1,39 +1,28 @@
-export interface Proof {
-  walletAddress: string;
-  domainName: string;
-  timestamp: string;
-  expiration: string;
-  signature: string;
-}
-
+/**
+ * TXT record format per specification
+ * Format: id=<unique_id>&itime=<issuing_timestamp>&etime=<expiration_timestamp>&sig=<signature>
+ */
 export interface TxtRecord {
-  id: string;
-  itime: string;
-  etime: string;
-  sig: string;
+  id: string;      // Unique claim identifier (8 hex chars)
+  itime: string;   // Issuing timestamp (Unix)
+  etime: string;   // Expiration timestamp (Unix)
+  sig: string;     // EIP-191 signature
 }
 
-export interface SignatureMethod {
-  type: 'metamask' | 'mnemonic' | 'interactive';
-  data?: string; // mnemonic or credential file path
-}
-
-export interface WalletConfig {
-  mnemonic?: string;
-  derivationPath?: string;
-  credentialsFile?: string;
-}
-
-export interface SignatureRequest {
-  message: string;
-  address: string;
-  method: SignatureMethod;
-} export interface AquaTreeClaim {
-  forms_unique_id: string;
-  forms_claim_secret: string;
-  forms_txt_name: string;
-  forms_wallet_address: string;
-  forms_domain: string;
-  forms_type: string;
-  signature_type: string;
+/**
+ * AquaTree claim structure per specification
+ * Contains all fields needed for claim generation and verification
+ */
+export interface AquaTreeClaim {
+  forms_unique_id: string;      // Random 8 hex chars
+  forms_claim_secret: string;   // Random 16 hex chars (private, for signing)
+  forms_txt_name: string;       // DNS subdomain (e.g., "_aw.example.com")
+  forms_txt_record: string;     // The TXT record content
+  forms_wallet_address: string; // Ethereum address
+  forms_domain: string;         // Domain name (lowercase FQDN)
+  forms_type: string;           // Always "dns_claim"
+  signature_type: string;       // Always "ethereum:eip-191"
+  itime: string;                // Issuing timestamp (Unix)
+  etime: string;                // Expiration timestamp (Unix)
+  sig: string;                  // EIP-191 signature
 }
