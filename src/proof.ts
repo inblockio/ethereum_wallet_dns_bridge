@@ -12,34 +12,44 @@ resolver.setServers(DNS_SERVERS);
 
 /**
  * Generate a new claim
+ * @param publicAssociation - If true, wallet address is included in DNS record (no secret)
  */
 export async function generateClaim(
   domain: string,
   privateKey: string,
   txtName: string,
-  expirationDays = DEFAULT_EXPIRATION_DAYS
+  expirationDays = DEFAULT_EXPIRATION_DAYS,
+  publicAssociation = false
 ): Promise<AquaTreeClaim> {
   const uniqueId = await generateUniqueId(txtName);
-  const claimSecret = randomBytes(8).toString('hex');
+  const wallet = new ethers.Wallet(privateKey);
+
+  // In public mode, use wallet address instead of secret
+  const claimSecret = publicAssociation ? '' : randomBytes(8).toString('hex');
+  const messagePrefix = publicAssociation ? wallet.address : claimSecret;
+
   const itime = Math.floor(Date.now() / 1000);
   const etime = itime + expirationDays * 86400;
 
-  const message = `${claimSecret}&${itime}&${domain}&${etime}`;
-  const wallet = new ethers.Wallet(privateKey);
+  const message = `${messagePrefix}&${itime}&${domain}&${etime}`;
   const signature = await wallet.signMessage(message);
 
   return {
     forms_unique_id: uniqueId,
     forms_claim_secret: claimSecret,
     forms_txt_name: txtName,
-    forms_txt_record: formatClaimTxtRecord(uniqueId, itime, etime, signature),
+    forms_txt_record: formatClaimTxtRecord(
+      uniqueId, itime, etime, signature,
+      publicAssociation ? wallet.address : undefined
+    ),
     forms_wallet_address: wallet.address,
     forms_domain: domain,
     forms_type: 'dns_claim',
     signature_type: 'ethereum:eip-191',
     itime: itime.toString(),
     etime: etime.toString(),
-    sig: signature
+    sig: signature,
+    public_association: publicAssociation
   };
 }
 
@@ -49,10 +59,11 @@ export async function generateClaim(
 export async function generateClaimWithOverflow(
   domain: string,
   privateKey: string,
-  expirationDays = DEFAULT_EXPIRATION_DAYS
+  expirationDays = DEFAULT_EXPIRATION_DAYS,
+  publicAssociation = false
 ): Promise<{ claim: AquaTreeClaim; continuationsUpdate: string | null; isNewSubdomain: boolean }> {
   const { subdomain, isNewSubdomain, continuationsUpdate } = await findAvailableSubdomain(domain);
-  const claim = await generateClaim(domain, privateKey, subdomain, expirationDays);
+  const claim = await generateClaim(domain, privateKey, subdomain, expirationDays, publicAssociation);
   return { claim, continuationsUpdate, isNewSubdomain };
 }
 
@@ -93,7 +104,18 @@ export async function findAvailableSubdomain(domain: string): Promise<{
   return { subdomain: newSubdomain, isNewSubdomain: true, continuationsUpdate: updatedContinuations };
 }
 
-export function formatClaimTxtRecord(uniqueId: string, itime: number, etime: number, signature: string): string {
+export function formatClaimTxtRecord(
+  uniqueId: string,
+  itime: number,
+  etime: number,
+  signature: string,
+  walletAddress?: string
+): string {
+  if (walletAddress) {
+    // Public mode: include wallet address in record
+    return `id=${uniqueId}&wallet=${walletAddress}&itime=${itime}&etime=${etime}&sig=${signature}`;
+  }
+  // Private mode: no wallet in record
   return `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
 }
 

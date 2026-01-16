@@ -387,6 +387,17 @@
                 <input type="text" id="domain" placeholder="example.com">
             </div>
 
+            <div class="form-group" style="margin-top: 16px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-size: 14px; font-weight: 500;">
+                    <input type="checkbox" id="public-mode" style="width: 18px; height: 18px; accent-color: var(--accent-blue);">
+                    <span>Make association public</span>
+                </label>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 6px; margin-left: 28px;">
+                    When enabled, your wallet address will be visible in the DNS record.<br>
+                    Anyone can verify the link without needing your claim file.
+                </p>
+            </div>
+
             <div class="info-row">
                 <span class="info-label">DNS Record Location</span>
                 <span class="info-value">_aw.&lt;domain&gt;</span>
@@ -479,11 +490,15 @@
             if (!domain) { showNotification('error', 'Invalid Input', 'Please enter a domain name'); return; }
 
             try {
+                const isPublic = document.getElementById('public-mode').checked;
                 const uniqueId = generateRandomHex(4);
-                const claimSecret = generateRandomHex(8);
+                // In public mode, no secret is used
+                const claimSecret = isPublic ? '' : generateRandomHex(8);
                 const itime = Math.floor(Date.now() / 1000);
                 const etime = itime + (90 * 24 * 60 * 60);
-                const message = `${claimSecret}&${itime}&${domain}&${etime}`;
+                // In public mode, use wallet address instead of secret
+                const messagePrefix = isPublic ? account : claimSecret;
+                const message = `${messagePrefix}&${itime}&${domain}&${etime}`;
 
                 document.getElementById('sign-btn').textContent = 'Signing...';
                 document.getElementById('sign-btn').disabled = true;
@@ -491,7 +506,10 @@
                 const signature = await ethereum.request({ method: 'personal_sign', params: [message, account] });
 
                 const txtName = `_aw.${domain}`;
-                const txtRecord = `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
+                // Include wallet in record for public mode
+                const txtRecord = isPublic
+                    ? `id=${uniqueId}&wallet=${account}&itime=${itime}&etime=${etime}&sig=${signature}`
+                    : `id=${uniqueId}&itime=${itime}&etime=${etime}&sig=${signature}`;
 
                 currentClaimData = {
                     forms_unique_id: uniqueId,
@@ -504,7 +522,8 @@
                     signature_type: 'ethereum:eip-191',
                     itime: itime.toString(),
                     etime: etime.toString(),
-                    sig: signature
+                    sig: signature,
+                    public_association: isPublic
                 };
 
                 saveToServer(currentClaimData);
@@ -578,6 +597,16 @@
         document.getElementById('connect-btn').addEventListener('click', connectWallet);
         document.getElementById('sign-btn').addEventListener('click', signMessage);
         document.getElementById('download-btn').addEventListener('click', downloadClaim);
+
+        // Check URL params for domain and public mode
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('domain')) {
+            document.getElementById('domain').value = urlParams.get('domain');
+        }
+        if (urlParams.get('public') === 'true') {
+            document.getElementById('public-mode').checked = true;
+        }
+
         checkMetaMask();
     </script>
 </body>

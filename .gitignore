@@ -36,4 +36,7 @@ coverage/
 
 # Temporary folders
 tmp/
-temp/ 
+temp/
+
+# Test claims
+claims/ 
