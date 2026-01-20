@@ -38,6 +38,12 @@ program
           options.public
         );
 
+        // Save claim file (critical for private claims)
+        const fs = require('fs');
+        const filename = `claim-${claim.forms_unique_id}.json`;
+        fs.writeFileSync(filename, JSON.stringify(claim, null, 2));
+        console.log(`\n💾 Saved claim to: ${filename}`);
+
         console.log('\n✅ Proof Generated!');
         console.log('\nCreate the following TXT record in your DNS provider:');
         console.log('---------------------------------------------------------');

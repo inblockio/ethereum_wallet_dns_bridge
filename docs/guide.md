@@ -19,6 +19,13 @@ The Wallet-to-Domain Lookup System is a CLI tool that allows you to associate cr
 2. Install dependencies: `npm install`
 3. Build the tool: `node build.js`
 4. Use the built file: `node dist/wallet-tool.js <command>`
+   
+   **Note for Linux/Mac users:**
+   You can also make the file executable and run it directly:
+   ```bash
+   chmod +x dist/wallet-tool.js
+   ./dist/wallet-tool.js <command>
+   ```
 
 ## Commands
 
@@ -26,16 +33,25 @@ The Wallet-to-Domain Lookup System is a CLI tool that allows you to associate cr
 Creates a cryptographic proof linking your wallet to a domain.
 
 ```bash
-node wallet-tool.js generate <domain> [privateKey]
+# Using node
+node dist/wallet-tool.js generate <domain> [privateKey] [--public]
+
+# Or directly (Linux/Mac)
+./dist/wallet-tool.js generate <domain> [privateKey] [--public]
 ```
 
 **Parameters:**
 - `<domain>`: Your domain name (e.g., `example.com`)
 - `[privateKey]`: (Optional) Your wallet's private key for headless generation. If omitted, opens browser for MetaMask.
+- `--public`: (Optional) Make the association public by including the wallet address directly in the DNS record. This allows verification without the claim file.
 
 **Example:**
 ```bash
+# Private claim (default) - requires claim file to verify
 node wallet-tool.js generate example.com 0x123456...
+
+# Public claim - verifiable by anyone via DNS
+node wallet-tool.js generate example.com 0x123456... --public
 ```
 
 **Output:**
@@ -54,7 +70,10 @@ Verifies that a wallet-to-domain association exists and is valid.
 Checks public DNS records directly.
 
 ```bash
-node wallet-tool.js verify-dns <domain> [claimId]
+```bash
+./dist/wallet-tool.js verify-dns <domain> [claimId]
+# or
+node dist/wallet-tool.js verify-dns <domain> [claimId]
 ```
 
 **Parameters:**
@@ -70,7 +89,9 @@ node wallet-tool.js verify-dns example.com
 Verifies a locally stored claim file.
 
 ```bash
-node wallet-tool.js verify <claimFile>
+./dist/wallet-tool.js verify <claimFile>
+# or
+node dist/wallet-tool.js verify <claimFile>
 ```
 
 ## DNS Configuration
@@ -79,7 +100,7 @@ node wallet-tool.js verify <claimFile>
 
 1. **Generate the Proof**
    ```bash
-   node wallet-tool.js generate yourdomain.com [privateKey]
+   ./dist/wallet-tool.js generate yourdomain.com [privateKey]
    ```
 
 2. **Copy the Record Details**
@@ -104,7 +125,7 @@ node wallet-tool.js verify <claimFile>
 
 6. **Verify**
    ```bash
-   node wallet-tool.js verify-dns yourdomain.com
+   ./dist/wallet-tool.js verify-dns yourdomain.com
    ```
 
 ### DNS Record Format
