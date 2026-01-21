@@ -56,7 +56,7 @@ node wallet-tool.js generate example.com 0x123456... --public
 
 **Output:**
 The tool will generate a TXT record content and the specific Host/Name to use:
-```
+```txt
 Host:  _aw.example.com
 Value: id=440a2718&time=...&sig=0x...
 ```
@@ -69,7 +69,6 @@ Verifies that a wallet-to-domain association exists and is valid.
 **Option A: Verify from DNS (Public)**
 Checks public DNS records directly.
 
-```bash
 ```bash
 ./dist/wallet-tool.js verify-dns <domain> [claimId]
 # or
@@ -188,23 +187,6 @@ dig TXT _aw.yourdomain.com
 # Windows
 nslookup -type=TXT _aw.yourdomain.com
 ```
-
-## Use Cases
-
-### Portfolio Verification
-Link multiple wallets to your domain for portfolio transparency:
-- `aqua._eth.yourdomain.com` → Ethereum wallet
-- `aqua._btc.yourdomain.com` → Bitcoin wallet  
-- `aqua._trading.yourdomain.com` → Trading wallet
-
-### Professional Identity
-Establish credible links between your professional domain and crypto addresses:
-- Company website + treasury wallet
-- Personal portfolio site + investment addresses
-- DeFi protocol + governance wallet
-
-### NFT Artist Verification
-Prove ownership of NFT collections by linking your artist domain to creator wallets.
 
 ## Advanced Usage
 
