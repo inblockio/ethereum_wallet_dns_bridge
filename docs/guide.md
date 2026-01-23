@@ -19,6 +19,13 @@ The Wallet-to-Domain Lookup System is a CLI tool that allows you to associate cr
 2. Install dependencies: `npm install`
 3. Build the tool: `node build.js`
 4. Use the built file: `node dist/wallet-tool.js <command>`
+   
+   **Note for Linux/Mac users:**
+   You can also make the file executable and run it directly:
+   ```bash
+   chmod +x dist/wallet-tool.js
+   ./dist/wallet-tool.js <command>
+   ```
 
 ## Commands
 
@@ -26,38 +33,64 @@ The Wallet-to-Domain Lookup System is a CLI tool that allows you to associate cr
 Creates a cryptographic proof linking your wallet to a domain.
 
 ```bash
-node wallet-tool.js generate <domain> <privateKey>
+# Using node
+node dist/wallet-tool.js generate <domain> [privateKey] [--public]
+
+# Or directly (Linux/Mac)
+./dist/wallet-tool.js generate <domain> [privateKey] [--public]
 ```
 
 **Parameters:**
 - `<domain>`: Your domain name (e.g., `example.com`)
-- `<privateKey>`: Your wallet's private key (e.g., `0x1234...`)
+- `[privateKey]`: (Optional) Your wallet's private key for headless generation. If omitted, opens browser for MetaMask.
+- `--public`: (Optional) Make the association public by including the wallet address directly in the DNS record. This allows verification without the claim file.
 
 **Example:**
 ```bash
-node wallet-tool.js generate example.com 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+# Private claim (default) - requires claim file to verify
+node wallet-tool.js generate example.com 0x123456...
+
+# Public claim - verifiable by anyone via DNS
+node wallet-tool.js generate example.com 0x123456... --public
 ```
 
 **Output:**
-The tool will generate a TXT record content that looks like:
+The tool will generate a TXT record content and the specific Host/Name to use:
+```txt
+Host:  _aw.example.com
+Value: id=440a2718&time=...&sig=0x...
 ```
-wallet=0xAbC123...;nonce=a1b2c3d4e5;timestamp=1234567890;sig=0xdef456...
-```
+
+**Note:** The value `440a2718` (after `id=`) is your **Claim ID**. You may need this for verification.
 
 ### Verify Association
 Verifies that a wallet-to-domain association exists and is valid.
 
+**Option A: Verify from DNS (Public)**
+Checks public DNS records directly.
+
 ```bash
-node wallet-tool.js verify <domain> <lookupKey>
+./dist/wallet-tool.js verify-dns <domain> [claimId]
+# or
+node dist/wallet-tool.js verify-dns <domain> [claimId]
 ```
 
 **Parameters:**
 - `<domain>`: The domain name to check
-- `<lookupKey>`: The lookup identifier you used in the DNS record
+- `[claimId]`: (Optional) The specific **Claim ID** (e.g., `440a2718`) from the generation output. Useful if you have multiple claims on one domain.
 
 **Example:**
 ```bash
-node wallet-tool.js verify example.com wallet1
+node wallet-tool.js verify-dns example.com
+```
+
+**Option B: Verify from Claim File (Private)**
+Verifies a locally stored claim file.
+
+```bash
+./dist/wallet-tool.js verify <claimFile>
+# or
+node dist/wallet-tool.js verify <claimFile>
 ```
 
 ## DNS Configuration
@@ -66,44 +99,48 @@ node wallet-tool.js verify example.com wallet1
 
 1. **Generate the Proof**
    ```bash
-   node wallet-tool.js generate yourdomain.com 0xYourPrivateKey
+   ./dist/wallet-tool.js generate yourdomain.com [privateKey]
    ```
 
-2. **Copy the TXT Record Content**
-   The tool will output something like:
+2. **Copy the Record Details**
+   The tool will output the exact Host and Value you need.
    ```
-   wallet=0xAbC123...;nonce=a1b2c3d4e5;timestamp=1234567890;sig=0xdef456...
+   Host:  _aw.yourdomain.com
+   Value: id=440a2718&wallet=0x...
    ```
 
 3. **Access Your DNS Provider**
-   - Log into your domain registrar or DNS hosting service
-   - Navigate to DNS management/settings
+   - Log into your domain registrar
+   - Navigate to DNS management
 
 4. **Create TXT Record**
-   - **Name/Host**: `aqua._<your-lookup-key>`
-   - **Value**: The generated content from step 2
-   - **Example Name**: `aqua._wallet1` (for lookup key "wallet1")
+   - **Type**: TXT
+   - **Host/Name**: Use the `Host` value from the tool output (usually `_aw` or `_aw.yourdomain.com` depending on your provider)
+   - **Value**: Copy the full `Value` string
 
 5. **Save and Wait**
-   - Save the DNS record
-   - DNS propagation can take 1-24 hours
+   - Save the record
+   - Wait for DNS propagation
 
-6. **Verify the Association**
+6. **Verify**
    ```bash
-   node wallet-tool.js verify yourdomain.com wallet1
+   ./dist/wallet-tool.js verify-dns yourdomain.com
    ```
 
 ### DNS Record Format
 
-**Record Name Pattern:**
+The tool automatically manages record names to handle multiple claims via integer suffixes if necessary.
+
+**Standard Record:**
 ```
-aqua._<lookup-key>.<domain>
+_aw.<domain>
 ```
 
-**Examples:**
-- `aqua._wallet1.example.com` (for lookup key "wallet1")
-- `aqua._main.mysite.org` (for lookup key "main")
-- `aqua._trading.crypto-domain.io` (for lookup key "trading")
+**Overflow Records:**
+If you have many claims, the tool may direct you to use:
+- `_aw2.<domain>`
+- `_aw3.<domain>`
+etc.
 
 ## Security Considerations
 
@@ -130,12 +167,11 @@ aqua._<lookup-key>.<domain>
 1. **DNS Record Missing**: Check that the TXT record exists at the correct location
 2. **DNS Propagation**: Wait longer for DNS changes to propagate globally
 3. **Wrong Format**: Ensure the TXT record content exactly matches the generated proof
-4. **Incorrect Lookup Key**: Verify you're using the same lookup key in both DNS and verify command
 
 **Solutions:**
 - Use online DNS lookup tools to verify your TXT record exists
 - Try the verify command from different networks/locations
-- Double-check the exact spelling of domain and lookup key
+- Double-check the exact spelling of domain
 
 ### "Error generating proof"
 **Possible causes:**
@@ -146,42 +182,25 @@ aqua._<lookup-key>.<domain>
 You can manually check if your DNS record exists using:
 ```bash
 # Linux/Mac
-dig TXT aqua._wallet1.yourdomain.com
+dig TXT _aw.yourdomain.com
 
 # Windows
-nslookup -type=TXT aqua._wallet1.yourdomain.com
+nslookup -type=TXT _aw.yourdomain.com
 ```
-
-## Use Cases
-
-### Portfolio Verification
-Link multiple wallets to your domain for portfolio transparency:
-- `aqua._eth.yourdomain.com` → Ethereum wallet
-- `aqua._btc.yourdomain.com` → Bitcoin wallet  
-- `aqua._trading.yourdomain.com` → Trading wallet
-
-### Professional Identity
-Establish credible links between your professional domain and crypto addresses:
-- Company website + treasury wallet
-- Personal portfolio site + investment addresses
-- DeFi protocol + governance wallet
-
-### NFT Artist Verification
-Prove ownership of NFT collections by linking your artist domain to creator wallets.
 
 ## Advanced Usage
 
 ### Multiple Associations
-You can associate multiple wallets with the same domain using different lookup keys:
+You can associate multiple wallets. The tool will automatically handle this by assigning them to the same `_aw` record (if space permits) or creating overflow records like `_aw2`.
 
 ```bash
 # Associate main wallet
 node wallet-tool.js generate yourdomain.com 0xMainWalletKey
-# Add TXT record at: aqua._main.yourdomain.com
+# Output will direct you to: _aw.yourdomain.com
 
-# Associate trading wallet  
+# Associate trading wallet
 node wallet-tool.js generate yourdomain.com 0xTradingWalletKey
-# Add TXT record at: aqua._trading.yourdomain.com
+# Output will direct you to either append to _aw or create _aw2
 ```
 
 ### Updating Associations
@@ -199,7 +218,9 @@ To update or revoke an association:
 4. **Verification**: Recover address from signature and compare
 
 ### DNS Query Process
-1. Query `aqua._<lookup-key>.<domain>` for TXT records
+### DNS Query Process
+1. Query `_aw.<domain>` for TXT records
+
 2. Parse the record content into components
 3. Reconstruct the original message
 4. Verify the cryptographic signature

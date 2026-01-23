@@ -9,12 +9,60 @@ program
   .description('Ethereum Wallet to Domain DNS Bridge')
   .version('1.0.0');
 
+import { generateClaimWithOverflow } from './proof';
+
 program
   .command('generate')
-  .description('Generate a claim using MetaMask browser signing')
+  .description('Generate a claim using MetaMask browser signing or private key')
   .argument('<domain>', 'Domain name (e.g., example.com)')
+  .argument('[privateKey]', 'Optional private key for headless generation')
   .option('-p, --public', 'Make association public (wallet visible in DNS record)')
-  .action(async (domain: string, options: { public?: boolean }) => {
+  .action(async (domain: string, privateKey: string | undefined, options: { public?: boolean }) => {
+    // Check if the second argument is actually the options object (commander behavior when optional arg is missing)
+    // In Commander, if an optional argument is not provided, the argument value might be the options object if not handled carefully,
+    // but usually with .argument(), it passes undefined. However, let's be safe.
+    // If privateKey is an object (the options), then it wasn't passed as a string string.
+    if (typeof privateKey === 'object') {
+      options = privateKey as any;
+      privateKey = undefined;
+    }
+
+    if (privateKey) {
+      // Headless mode
+      try {
+        console.log(`Generating proof for ${domain}...`);
+        const { claim, continuationsUpdate } = await generateClaimWithOverflow(
+          domain,
+          privateKey,
+          90, // default expiration
+          options.public
+        );
+
+        // Save claim file (critical for private claims)
+        const fs = require('fs');
+        const filename = `claim-${claim.forms_unique_id}.json`;
+        fs.writeFileSync(filename, JSON.stringify(claim, null, 2));
+        console.log(`\n💾 Saved claim to: ${filename}`);
+
+        console.log('\n✅ Proof Generated!');
+        console.log('\nCreate the following TXT record in your DNS provider:');
+        console.log('---------------------------------------------------------');
+        console.log(`Host:  ${claim.forms_txt_name}`);
+        console.log(`Value: ${claim.forms_txt_record}`);
+        console.log('---------------------------------------------------------');
+
+        if (continuationsUpdate) {
+          console.log('\n⚠️  UPDATE REQUIRED: Checks passed limits.');
+          console.log(`Please ensure the parent record includes: ${continuationsUpdate}`);
+        }
+      } catch (error) {
+        console.error('❌ Error generating proof:', error instanceof Error ? error.message : error);
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Browser mode
     const net = require('net');
     const path = require('path');
     const { spawn } = require('child_process');
@@ -47,7 +95,7 @@ program
       if (options.public) {
         console.log('Mode: PUBLIC (wallet will be visible in DNS)');
       }
-      exec(`xdg-open "${url}"`, () => {});
+      exec(`xdg-open "${url}"`, () => { });
       console.log('\n1. Connect MetaMask\n2. Click "Generate Claim"\n3. Add TXT record to DNS');
     }
   });
